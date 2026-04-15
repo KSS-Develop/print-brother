@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,6 +42,7 @@ jobs:
 
       - name: Copy binaries + dependencies to bin/
         run: |
+          rm -rf bin lib
           mkdir -p bin lib
           # GhostScript binary
           cp $(which gs) bin/gs
@@ -49,9 +50,19 @@ jobs:
           # brlaser CUPS filter
           cp /usr/lib/cups/filter/rastertobrlaser bin/rastertobrlaser
           chmod +x bin/rastertobrlaser
-          # Bundle shared library dependencies (libgs, libcupsimage, etc.)
+          # Bundle shared library dependencies (excluding libc, ld-linux, libdl, libpthread)
+          # which come from the Vercel runtime's own glibc.
+          EXCLUDE_RE='^(linux-vdso|linux-gate|ld-linux|libc|libdl|libpthread|librt|libnsl|libutil|libresolv|libm|libgcc_s)\.so'
           for binary in bin/gs bin/rastertobrlaser; do
-            ldd "$binary" | awk '{print $3}' | grep -v '^$' | xargs -I {} cp -L {} lib/ 2>/dev/null || true
+            ldd "$binary" | awk '{print $3}' | grep -v '^$' | while read lib; do
+              base=$(basename "$lib")
+              if echo "$base" | grep -qE "$EXCLUDE_RE"; then
+                echo "  SKIP system lib: $base"
+              else
+                cp -L "$lib" lib/
+                echo "  COPY: $base"
+              fi
+            done
           done
           ls -la bin/ lib/
           du -sh bin/ lib/

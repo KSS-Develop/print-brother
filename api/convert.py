@@ -23,11 +23,14 @@ import tempfile
 from http.server import BaseHTTPRequestHandler
 
 # Path donde Vercel monta los binarios incluidos en el repo
-BIN_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bin")
+ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+BIN_DIR = os.path.join(ROOT, "bin")
+LIB_DIR = os.path.join(ROOT, "lib")
 GS_BIN = os.path.join(BIN_DIR, "gs")
 BRLASER_BIN = os.path.join(BIN_DIR, "rastertobrlaser")
 
-# Variables CUPS que brlaser espera en el environment
+# Variables CUPS que brlaser espera en el environment + LD_LIBRARY_PATH
+# para que los binarios encuentren las shared libs incluidas en lib/
 CUPS_ENV = {
     "PPD": "",
     "CONTENT_TYPE": "application/vnd.cups-raster",
@@ -35,6 +38,7 @@ CUPS_ENV = {
     "PRINTER": "Brother",
     "USER": "vercel",
     "LANG": "C",
+    "LD_LIBRARY_PATH": LIB_DIR + ":" + os.environ.get("LD_LIBRARY_PATH", ""),
 }
 
 

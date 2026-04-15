@@ -26,11 +26,12 @@ from http.server import BaseHTTPRequestHandler
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 BIN_DIR = os.path.join(ROOT, "bin")
 LIB_DIR = os.path.join(ROOT, "lib")
+GS_SHARE = os.path.join(ROOT, "gs_share")
 GS_BIN = os.path.join(BIN_DIR, "gs")
 BRLASER_BIN = os.path.join(BIN_DIR, "rastertobrlaser")
 
 # Variables CUPS que brlaser espera en el environment + LD_LIBRARY_PATH
-# para que los binarios encuentren las shared libs incluidas en lib/
+# para shared libs + GS_LIB para los .ps de inicialización de GhostScript
 CUPS_ENV = {
     "PPD": "",
     "CONTENT_TYPE": "application/vnd.cups-raster",
@@ -39,6 +40,13 @@ CUPS_ENV = {
     "USER": "vercel",
     "LANG": "C",
     "LD_LIBRARY_PATH": LIB_DIR + ":" + os.environ.get("LD_LIBRARY_PATH", ""),
+    "GS_LIB": (
+        f"{GS_SHARE}/Resource/Init:"
+        f"{GS_SHARE}/lib:"
+        f"{GS_SHARE}/Resource:"
+        f"{GS_SHARE}/Resource/Font:"
+        f"{GS_SHARE}/iccprofiles"
+    ),
 }
 
 

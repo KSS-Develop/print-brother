@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - 'bin/**'
       - 'lib/**'
+      - 'gs_share/**'
       - 'README.md'
   workflow_dispatch:
 
@@ -40,17 +41,17 @@ jobs:
           ls -la /usr/lib/cups/filter/ | grep -i brlaser
           file /usr/lib/cups/filter/rastertobrlaser
 
-      - name: Copy binaries + dependencies to bin/
+      - name: Copy binaries + dependencies + gs resources
         run: |
-          rm -rf bin lib
-          mkdir -p bin lib
+          rm -rf bin lib gs_share
+          mkdir -p bin lib gs_share
           # GhostScript binary
           cp $(which gs) bin/gs
           chmod +x bin/gs
           # brlaser CUPS filter
           cp /usr/lib/cups/filter/rastertobrlaser bin/rastertobrlaser
           chmod +x bin/rastertobrlaser
-          # Bundle shared library dependencies (excluding libc, ld-linux, libdl, libpthread)
+          # Bundle shared library dependencies (excluding libc, ld-linux, libdl, libpthread, libm, libgcc_s)
           # which come from the Vercel runtime's own glibc.
           EXCLUDE_RE='^(linux-vdso|linux-gate|ld-linux|libc|libdl|libpthread|librt|libnsl|libutil|libresolv|libm|libgcc_s)\.so'
           for binary in bin/gs bin/rastertobrlaser; do
@@ -64,8 +65,23 @@ jobs:
               fi
             done
           done
-          ls -la bin/ lib/
-          du -sh bin/ lib/
+          # GhostScript resources (PostScript init files, CMaps, iccprofiles)
+          # gs busca sus resources en GS_LIB / -I path
+          GS_VER=$(gs --version)
+          echo "gs version: $GS_VER"
+          GS_SHARE_DIR=$(find /usr/share/ghostscript -maxdepth 2 -type d -name "Resource" 2>/dev/null | head -1)
+          GS_SHARE_DIR=$(dirname "$GS_SHARE_DIR")
+          echo "gs share dir: $GS_SHARE_DIR"
+          if [ -d "$GS_SHARE_DIR/Resource" ]; then
+            cp -r "$GS_SHARE_DIR/Resource" gs_share/
+          fi
+          if [ -d "$GS_SHARE_DIR/iccprofiles" ]; then
+            cp -r "$GS_SHARE_DIR/iccprofiles" gs_share/
+          fi
+          # Strip large fonts directory if it exists (gs usará fonts del sistema o sustitutos)
+          rm -rf gs_share/Resource/Font 2>/dev/null || true
+          ls -la bin/ lib/ gs_share/
+          du -sh bin/ lib/ gs_share/
 
       - name: Test gs version
         run: |
@@ -76,10 +92,10 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add bin/ lib/
+          git add bin/ lib/ gs_share/
           if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m 'build: refresh Linux binaries (gs + rastertobrlaser)'
+          git commit -m 'build: refresh Linux binaries (gs + rastertobrlaser + gs_share)'
           git push

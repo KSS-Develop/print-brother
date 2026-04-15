@@ -72,20 +72,22 @@ jobs:
           GS_SHARE_DIR=$(find /usr/share/ghostscript -maxdepth 2 -type d -name "Resource" 2>/dev/null | head -1)
           GS_SHARE_DIR=$(dirname "$GS_SHARE_DIR")
           echo "gs share dir: $GS_SHARE_DIR"
+          # Usar tar para copiar Resource (más tolerante con symlinks rotos)
           if [ -d "$GS_SHARE_DIR/Resource" ]; then
-            cp -rL "$GS_SHARE_DIR/Resource" gs_share/
+            (cd "$GS_SHARE_DIR" && tar --ignore-failed-read -chf - Resource 2>/dev/null) | (cd gs_share && tar -xf - 2>/dev/null) || true
           fi
-          # iccprofiles puede ser symlink en Ubuntu -- sigue el link con -L
+          # iccprofiles puede ser symlink en Ubuntu
           ICC_DIR="$GS_SHARE_DIR/iccprofiles"
           if [ -L "$ICC_DIR" ]; then
             ICC_DIR=$(readlink -f "$ICC_DIR")
           fi
           if [ -d "$ICC_DIR" ]; then
-            cp -rL "$ICC_DIR" gs_share/iccprofiles
+            mkdir -p gs_share/iccprofiles
+            (cd "$ICC_DIR" && tar -cf - .) | (cd gs_share/iccprofiles && tar -xf -)
           fi
-          # Buscar también /var/lib/ghostscript/iccprofiles que es donde Ubuntu instala los profiles
+          # Buscar también /var/lib/ghostscript que es donde Ubuntu instala iccprofiles reales
           if [ -d /var/lib/ghostscript ]; then
-            cp -rL /var/lib/ghostscript/* gs_share/ 2>/dev/null || true
+            (cd /var/lib/ghostscript && tar --ignore-failed-read -chf - . 2>/dev/null) | (cd gs_share && tar -xf - 2>/dev/null) || true
           fi
           # Strip large fonts directory si gs usa font substitution
           rm -rf gs_share/Resource/Font 2>/dev/null || true

@@ -23,7 +23,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install gs and brlaser via apt
+      - name: Install gs + brlaser + cups-ppdc
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
@@ -33,18 +33,19 @@ jobs:
             printer-driver-brlaser \
             cups \
             libcups2-dev \
-            libcupsimage2-dev
+            libcupsimage2-dev \
+            cups-ppdc \
+            cmake \
+            g++ \
+            git
 
-      - name: Locate binaries and PPDs
+      - name: Locate binaries
         run: |
           which gs
           gs --version
+          which ppdc
           ls -la /usr/lib/cups/filter/ | grep -i brlaser
           file /usr/lib/cups/filter/rastertobrlaser
-          echo "=== brlaser PPDs disponibles ==="
-          find / -name "br1600*" 2>/dev/null
-          find / -name "brlaser*" -name "*.ppd*" 2>/dev/null | head -20
-          find /usr/share -path "*brlaser*" 2>/dev/null | head -20
 
       - name: Copy binaries + dependencies + gs resources + PPD
         run: |
@@ -101,29 +102,30 @@ jobs:
           echo "=== Verificar default_gray.icc presente ==="
           find gs_share -name "default_gray.icc"
 
-          # Copiar PPD Brother DCP-1600 series (br1600.ppd) que brlaser necesita
-          # Los PPDs vienen en /usr/share/ppd/brlaser/ o comprimidos en /usr/share/cups/model/
-          PPD_SRC=$(find / -name "br1600.ppd*" 2>/dev/null | head -1)
-          echo "PPD source: $PPD_SRC"
-          if [ -n "$PPD_SRC" ]; then
-            if echo "$PPD_SRC" | grep -q "\.gz$"; then
-              gunzip -c "$PPD_SRC" > ppd/br1600.ppd
-            else
-              cp "$PPD_SRC" ppd/br1600.ppd
-            fi
-          else
-            # Si no existe precompilado, generarlo desde el .drv source
-            sudo apt-get install -y --no-install-recommends cups-ppdc
-            mkdir -p /tmp/brlaser_ppd_build
-            cd /tmp/brlaser_ppd_build
-            git clone --depth 1 https://github.com/pdewacht/brlaser.git .
-            cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 . && make brlaser.drv
-            ppdc brlaser.drv -d .
-            cp br1600.ppd "$GITHUB_WORKSPACE/ppd/br1600.ppd"
-            cd "$GITHUB_WORKSPACE"
-          fi
+          # Compilar el PPD Brother DCP-1600 series (br1600.ppd) desde el .drv source
+          # printer-driver-brlaser de apt NO ship PPDs precompilados, solo el filter binary
+          mkdir -p /tmp/brlaser_ppd_build
+          cd /tmp/brlaser_ppd_build
+          git clone --depth 1 https://github.com/pdewacht/brlaser.git source
+          cd source
+          cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 . 2>&1 | tail -5
+          make brlaser.drv 2>&1 | tail -5 || true
+          # brlaser.drv debería estar generado
+          ls -la brlaser.drv 2>&1 || true
+          # Generar los PPDs con ppdc
+          mkdir -p ppds_out
+          ppdc -d ppds_out/ brlaser.drv 2>&1 | tail -5
+          ls -la ppds_out/ | head -30
+          # Copiar el br1600.ppd al repo
+          cp ppds_out/br1600.ppd "$GITHUB_WORKSPACE/ppd/br1600.ppd" 2>&1 || {
+            echo "br1600.ppd no encontrado — listar disponibles:"
+            ls ppds_out/
+            exit 1
+          }
+          cd "$GITHUB_WORKSPACE"
+          echo "=== PPD copiado ==="
           ls -la ppd/
-          head -20 ppd/br1600.ppd || echo "PPD file issue"
+          head -20 ppd/br1600.ppd
 
           ls -la bin/ lib/ gs_share/ ppd/
           du -sh bin/ lib/ gs_share/ ppd/

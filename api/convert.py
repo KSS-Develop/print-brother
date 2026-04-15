@@ -27,13 +27,15 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 BIN_DIR = os.path.join(ROOT, "bin")
 LIB_DIR = os.path.join(ROOT, "lib")
 GS_SHARE = os.path.join(ROOT, "gs_share")
+PPD_PATH = os.path.join(ROOT, "ppd", "br1600.ppd")
 GS_BIN = os.path.join(BIN_DIR, "gs")
 BRLASER_BIN = os.path.join(BIN_DIR, "rastertobrlaser")
 
 # Variables CUPS que brlaser espera en el environment + LD_LIBRARY_PATH
 # para shared libs + GS_LIB para los .ps de inicialización de GhostScript
+# + PPD con path al .ppd de brlaser para DCP-1600 series (el modelo de nuestra Brother)
 CUPS_ENV = {
-    "PPD": "",
+    "PPD": PPD_PATH,
     "CONTENT_TYPE": "application/vnd.cups-raster",
     "DEVICE_URI": "socket://localhost:9100",
     "PRINTER": "Brother",
@@ -60,7 +62,9 @@ def convert_pdf_to_hbp(pdf_bytes: bytes) -> bytes:
         with open(pdf_path, "wb") as f:
             f.write(pdf_bytes)
 
-        # Step 1: PDF → CUPS raster (1-bit B/W, 300 DPI)
+        # Step 1: PDF → CUPS raster (1-bit B/W, 600 DPI)
+        # DCP-1600 series solo soporta 600 y 1200 DPI (no 300)
+        # Papel: letter (puede ser A4, pero letter funciona OK por defecto)
         gs_cmd = [
             GS_BIN,
             "-dQUIET",
@@ -68,11 +72,12 @@ def convert_pdf_to_hbp(pdf_bytes: bytes) -> bytes:
             "-dNOPAUSE",
             "-dSAFER",
             "-sDEVICE=cups",
-            "-r300x300",
+            "-r600x600",
             "-sPAPERSIZE=letter",
             "-dcupsBitsPerColor=1",
             "-dcupsColorOrder=0",
-            "-dcupsColorSpace=3",
+            "-dcupsColorSpace=3",  # K (black)
+            "-dcupsNumColors=1",
             f"-sOutputFile={raster_path}",
             pdf_path,
         ]

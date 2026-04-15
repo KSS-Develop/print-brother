@@ -7,6 +7,7 @@ on:
       - 'bin/**'
       - 'lib/**'
       - 'gs_share/**'
+      - 'ppd/**'
       - 'README.md'
   workflow_dispatch:
 
@@ -34,17 +35,21 @@ jobs:
             libcups2-dev \
             libcupsimage2-dev
 
-      - name: Locate binaries
+      - name: Locate binaries and PPDs
         run: |
           which gs
           gs --version
           ls -la /usr/lib/cups/filter/ | grep -i brlaser
           file /usr/lib/cups/filter/rastertobrlaser
+          echo "=== brlaser PPDs disponibles ==="
+          find / -name "br1600*" 2>/dev/null
+          find / -name "brlaser*" -name "*.ppd*" 2>/dev/null | head -20
+          find /usr/share -path "*brlaser*" 2>/dev/null | head -20
 
-      - name: Copy binaries + dependencies + gs resources
+      - name: Copy binaries + dependencies + gs resources + PPD
         run: |
-          rm -rf bin lib gs_share
-          mkdir -p bin lib gs_share
+          rm -rf bin lib gs_share ppd
+          mkdir -p bin lib gs_share ppd
           # GhostScript binary
           cp $(which gs) bin/gs
           chmod +x bin/gs
@@ -95,8 +100,33 @@ jobs:
           rm -rf gs_share/Resource/SoftMaskImage 2>/dev/null || true
           echo "=== Verificar default_gray.icc presente ==="
           find gs_share -name "default_gray.icc"
-          ls -la bin/ lib/ gs_share/
-          du -sh bin/ lib/ gs_share/
+
+          # Copiar PPD Brother DCP-1600 series (br1600.ppd) que brlaser necesita
+          # Los PPDs vienen en /usr/share/ppd/brlaser/ o comprimidos en /usr/share/cups/model/
+          PPD_SRC=$(find / -name "br1600.ppd*" 2>/dev/null | head -1)
+          echo "PPD source: $PPD_SRC"
+          if [ -n "$PPD_SRC" ]; then
+            if echo "$PPD_SRC" | grep -q "\.gz$"; then
+              gunzip -c "$PPD_SRC" > ppd/br1600.ppd
+            else
+              cp "$PPD_SRC" ppd/br1600.ppd
+            fi
+          else
+            # Si no existe precompilado, generarlo desde el .drv source
+            sudo apt-get install -y --no-install-recommends cups-ppdc
+            mkdir -p /tmp/brlaser_ppd_build
+            cd /tmp/brlaser_ppd_build
+            git clone --depth 1 https://github.com/pdewacht/brlaser.git .
+            cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 . && make brlaser.drv
+            ppdc brlaser.drv -d .
+            cp br1600.ppd "$GITHUB_WORKSPACE/ppd/br1600.ppd"
+            cd "$GITHUB_WORKSPACE"
+          fi
+          ls -la ppd/
+          head -20 ppd/br1600.ppd || echo "PPD file issue"
+
+          ls -la bin/ lib/ gs_share/ ppd/
+          du -sh bin/ lib/ gs_share/ ppd/
 
       - name: Test gs version
         run: |
@@ -107,10 +137,10 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add bin/ lib/ gs_share/
+          git add bin/ lib/ gs_share/ ppd/
           if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m 'build: refresh Linux binaries (gs + rastertobrlaser + gs_share)'
+          git commit -m 'build: refresh Linux binaries (gs + rastertobrlaser + gs_share + ppd)'
           git push

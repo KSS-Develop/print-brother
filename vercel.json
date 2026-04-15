@@ -5,7 +5,7 @@
       "runtime": "@vercel/python@4.3.0",
       "memory": 1024,
       "maxDuration": 60,
-      "includeFiles": "{bin,lib,gs_share}/**"
+      "includeFiles": "{bin,lib,gs_share,ppd}/**"
     }
   }
 }

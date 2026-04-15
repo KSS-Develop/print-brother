@@ -5,8 +5,12 @@ on:
     branches: [main]
     paths-ignore:
       - 'bin/**'
+      - 'lib/**'
       - 'README.md'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:

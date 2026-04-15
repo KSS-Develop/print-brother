@@ -1,0 +1,70 @@
+name: Build Linux binaries (gs + rastertobrlaser)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'bin/**'
+      - 'README.md'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install gs and brlaser via apt
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            ghostscript \
+            ghostscript-x \
+            libgs-dev \
+            printer-driver-brlaser \
+            cups \
+            libcups2-dev \
+            libcupsimage2-dev
+
+      - name: Locate binaries
+        run: |
+          which gs
+          gs --version
+          ls -la /usr/lib/cups/filter/ | grep -i brlaser
+          file /usr/lib/cups/filter/rastertobrlaser
+
+      - name: Copy binaries + dependencies to bin/
+        run: |
+          mkdir -p bin lib
+          # GhostScript binary
+          cp $(which gs) bin/gs
+          chmod +x bin/gs
+          # brlaser CUPS filter
+          cp /usr/lib/cups/filter/rastertobrlaser bin/rastertobrlaser
+          chmod +x bin/rastertobrlaser
+          # Bundle shared library dependencies (libgs, libcupsimage, etc.)
+          for binary in bin/gs bin/rastertobrlaser; do
+            ldd "$binary" | awk '{print $3}' | grep -v '^$' | xargs -I {} cp -L {} lib/ 2>/dev/null || true
+          done
+          ls -la bin/ lib/
+          du -sh bin/ lib/
+
+      - name: Test gs version
+        run: |
+          ./bin/gs --version
+          ./bin/gs -h 2>&1 | head -30
+
+      - name: Commit binaries
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add bin/ lib/
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m 'build: refresh Linux binaries (gs + rastertobrlaser)'
+          git push

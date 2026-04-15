@@ -73,13 +73,26 @@ jobs:
           GS_SHARE_DIR=$(dirname "$GS_SHARE_DIR")
           echo "gs share dir: $GS_SHARE_DIR"
           if [ -d "$GS_SHARE_DIR/Resource" ]; then
-            cp -r "$GS_SHARE_DIR/Resource" gs_share/
+            cp -rL "$GS_SHARE_DIR/Resource" gs_share/
           fi
-          if [ -d "$GS_SHARE_DIR/iccprofiles" ]; then
-            cp -r "$GS_SHARE_DIR/iccprofiles" gs_share/
+          # iccprofiles puede ser symlink en Ubuntu -- sigue el link con -L
+          ICC_DIR="$GS_SHARE_DIR/iccprofiles"
+          if [ -L "$ICC_DIR" ]; then
+            ICC_DIR=$(readlink -f "$ICC_DIR")
           fi
-          # Strip large fonts directory if it exists (gs usará fonts del sistema o sustitutos)
+          if [ -d "$ICC_DIR" ]; then
+            cp -rL "$ICC_DIR" gs_share/iccprofiles
+          fi
+          # Buscar también /var/lib/ghostscript/iccprofiles que es donde Ubuntu instala los profiles
+          if [ -d /var/lib/ghostscript ]; then
+            cp -rL /var/lib/ghostscript/* gs_share/ 2>/dev/null || true
+          fi
+          # Strip large fonts directory si gs usa font substitution
           rm -rf gs_share/Resource/Font 2>/dev/null || true
+          # Stripear documentation/examples
+          rm -rf gs_share/Resource/SoftMaskImage 2>/dev/null || true
+          echo "=== Verificar default_gray.icc presente ==="
+          find gs_share -name "default_gray.icc"
           ls -la bin/ lib/ gs_share/
           du -sh bin/ lib/ gs_share/
 
